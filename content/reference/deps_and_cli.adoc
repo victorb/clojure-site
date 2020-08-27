@@ -28,7 +28,7 @@ To this end Clojure provides:
 
 = Overview
 
-You use the Clojure tools (`clj` or `clojure`) to run Clojure programs on the JVM, e.g. to start a REPL or invoke a specific function with data. The Clojure tools will configure the JVM process by defining a classpath (of desired libraries), an execution environment (JVM options) and specifying a main class and args.
+You use the Clojure tools (`clj` or `clojure`) to run Clojure programs on the JVM, e.g. to start a REPL or invoke a specific function with data. The Clojure tools will configure the JVM process by defining a classpath (with desired libraries), an execution environment (JVM options), the main class, and args.
 
 Using a deps.edn file (or files), you tell Clojure where your source code resides and what libraries you need. Clojure will then calculate the full set of required libraries and a classpath, caching expensive parts of this process for better performance.
 
@@ -38,12 +38,13 @@ The internal steps of the Clojure tools, as well as the Clojure functions you in
 
 [source]
 ----
-clj [clj-opt*] [execution-specifier]
+clj     [clj-opt*] [execution-specifier]
+clojure [clj-opt*] [execution-specifier]
 ----
 
-== Starting a REPL
+== Start a REPL
 
-To run a REPL, just do not supply any execution-specifier:
+To run a REPL, invoke `clj` without any execution-specifier:
 
 [source]
 ----
@@ -54,70 +55,92 @@ user=>
 
 == Executing a function that takes a map
 
-_Available in clj 1.10.1.619 or higher, currently a release candidate_
+_Available in clj 1.10.1.619 or higher, currently only in prerelease_
 
-If you have a function invocation you will frequently repeat, you can put a descriptor for it under a `deps.edn` alias and execute it with `-X`:
+You can use the following execution specifier to invoke a function that takes a map:
 
 [source]
 ----
-clojure [clj-opt*] -X:an-alias [kpath v]*
+clojure [clj-opt*] -X[:aliases] [a/fn] [kpath v]*
 ----
 
-`-X` is configured with a descriptor map with `:fn` and `:args` keys, and stored under an alias in `deps.edn`:
+The aliases are looked up in the deps.edn and combined into a composite arg map. The arg map is used both to influence how the classpath is built (more on that below) and to persist invocation details.
+
+You can specify the function to invoke either on the command line, or with the `:exec-fn` key in the arg map (command line takes precedence). The function is resolved in a namespace based on the following rules:
+
+* If function is unqualified, use the namespace in the `:ns-default` key in the arg map (if none, this is an error)
+* If function is qualified, and the qualifier is an alias in the arg map under `:ns-aliases`, use that namespace
+* Else use the fully qualified function symbol
+
+The function is invoked with a map. The base map can be supplied in the arg map under the `:exec-args` key and can also be overridden or supplied at the command line.
+
+For example, to invoke a function in your project:
 
 [source,clojure]
 ----
-{:aliases
- {:my-fn
-  {:fn my.qualified/fn
-   :args {:my {:data 123}
-          :config 456}}}}
+clj -X my.project.util/start-server :port 5555
 ----
 
-To invoke, pass the name of the alias:
+This will invoke the function `(my.project.util/start-server {:port 5555})`. 
+
+If you have many utility functions in that namespace, you might want to set it up as a default in your `deps.edn`:
+
+[source,clojure]
+----
+;; deps.edn
+{:aliases
+ {:my-project
+  {:ns-default my.project.util}}}
+----
+
+This simplifies the invocation and also lets you call any other utility function in that namespace:
 
 [source]
 ----
-clj -X:my-fn
+clj -X:my-project start-server :port 5555
+clj -X:my-project new-user :name '"Kermit"' :color :green
 ----
 
-You can supply additional keys, or override values stored in the deps.edn file by passing pairs of key-path and value. The key-path should either be a single key or a vector of keys to refer to a nested key (as with `assoc-in`). Each key-path will be used to `assoc-in` to the original `:args` map, overriding the value there.
+If you also have a set of database utility functions, supply a namespace alias for it:
+[source,clojure]
+----
+;; deps.edn
+{:aliases
+ {:my-project
+  {:ns-default my.project.util
+   :ns-aliases {db my.project.dbutil}}}}
+   
+clj -X:my-project db/install-schema :schema '"db/my.schema"'
+----
+
+As you saw above, you can supply key-path/value pairs on the command line. The key-path is either a single key or a vector of keys to refer to a nested key (as with `assoc-in`). Each key-path will be used to `assoc-in` to the original `:args` map, overriding the value there.
 
 [source]
 ----
 # Top key override
-clj -X:my-fn :config 789
+clj -X:my-fn :val 789
 
 # Nested key override
 clj -X:my-fn '[:my :data]' 789
 ----
 
-If you want to execute an arbitrary function, you can do that with `-F`:
-
-[source]
-----
-clojure [clj-opt*] -Fmy/fn [kpath v]*
-----
-
-Pass the fully qualified function name with `-F` and then any number of key/value pairs for the invocation map:
-
-[source]
-----
-clj -Fclojure.core/pr :a 1 :b 2
-----
-
-=== Quoting keys and values
-
-Key/value pairs are read as edn strings. A general rule is that you can surround edn data with single quotes `'data'` to get a literal string (which exec will read as edn data). In some cases (particularly numbers and keywords), you can omit the single quotes as bash does not have any conflicting interpretation.
-
-Note that strings must be passed in double quotes, also surrounded by single quotes to escape correctly with bash: `clj -X:my-fn :config '"foo"'`.
-
+[NOTE]
+====
+See the later section on "Quoting keys and values" for more details on how to properly quote edn values on the command line.
+====
 
 == Running a main or script
 
-In other cases, the Clojure tools will invoke clojure.main to run either a namespace with a `-main` function or load a Clojure script.
+You can also use a `-M` specifier to invoke clojure.main, which supports calling a namespace with a `-main` function or running a Clojure script:
 
-See the <<repl_and_main#,clojure.main>> documentation for more details.
+[source]
+----
+clojure [clj-opt*] -M[:aliases] [main-opts]
+----
+
+The -M aliases are pulled from `deps.edn` and combined to form an arg map. The arg map can modify the classpath or supply main options.
+
+See the <<repl_and_main#,clojure.main>> documentation for more details on the main options.
 
 = Operation
 
@@ -147,7 +170,7 @@ If the key is found, and the cached files are newer than all deps.edn sources, t
 
 == Replace project environment ("tool")
 
-When you execute a tool in the context of your project, the tool uses its own paths and/or deps in place of the project's paths and/or deps.
+When you execute a tool in the context of your project, the tool can use its own paths and/or deps in place of the project's paths and/or deps.
 
 == Merge sources
 
@@ -236,7 +259,7 @@ Aliases give a name to a data structure that can be used either by the Clojure t
 
 = Basis and classpath
 
-_Available in clj 1.10.1.619 or higher, currently a release candidate_
+_Available in clj 1.10.1.619 or higher, currently only in prerelease_
 
 The core of the tools.deps library is a process to take a merged deps.edn file, arg maps for the resolve-deps and make-classpath steps, and produce the "runtime basis", or "basis" for short. The basis is a superset of the deps.edn file also containing those args, the lib map, and the classpath map.
 
@@ -390,10 +413,10 @@ Caching can be modified by the following options:
 
 The `tool` process is used when executing a tool that should not use the project classpath environment. This process takes the project deps.edn and the following modifier args and replaces them (if provided) before the project deps is merged:
 
-* `:deps` - a deps map from lib to coordinate of deps to REPLACE the project `:deps`
-* `:paths` a collection of string paths to REPLACE project `:paths`
+* `:replace-deps` - a deps map from lib to coordinate of deps to REPLACE the project `:deps`
+* `:replace-paths` a collection of string paths to REPLACE project `:paths`
 
-This tool map should be provided as an alias in one of the deps sources and provided to the Clojure tools using either `-T:an-alias` or `-A:an-alias`. Multiple aliases can be provided by concatentating the alias names.
+This tool map should be provided as an alias in one of the deps sources and provided to the Clojure tools using -A, -M, or -X. Multiple aliases can be provided by concatentating the alias names.
 
 == Merging deps.edn
 
@@ -448,7 +471,7 @@ This map is stored in alias data and provided to the Clojure tools using either 
 
 === Basis injection
 
-_Available in clj 1.10.1.619 or higher, currently a release candidate_
+_Available in clj 1.10.1.619 or higher, currently only in prerelease_
 
 The Clojure tools inject the computed runtime basis into the executed process using the Java system property `clojure.basis` which points to the cached basis file. Programs can read the basis file as edn and use it themselves if needed.
 
@@ -474,7 +497,7 @@ There are some options that can be provided to `clj` that short circuit normal e
 
 === Local Maven install
 
-_Available in clj 1.10.1.619 or higher, currently a release candidate_
+_Available in clj 1.10.1.619 or higher, currently only in prerelease_
 
 The `clojure.tools.deps.alpha.tools.install/install` program is provided with the Clojure tools for convenience and can be executed with `-X` to install a jar into your local Maven cache.
 
@@ -698,6 +721,23 @@ _Note: user/password authentication is not supported for any protocol._
 == Installers
 
 For tools installation, see the instructions in the <<xref/../../guides/getting_started#,Getting Started>> guide.
+
+== Command line reference
+
+=== Quoting keys and values
+
+Key/value pairs are read as edn strings. In general, it is always safe to surround the edn value with single quotes `'data'` which will be read as edn data. In some cases (particularly numbers and keywords), you can omit the single quotes as bash does not have any conflicting interpretation. Examples by data type:
+
+* Numbers - `123`, `12.4`
+* Booleans - `true`, `false`
+* Nil - `nil`
+* Symbols - `name`, `foo/bar`
+* Strings - `'"hi there"'` - note use of both single AND double quotes - single are for the shell, double make it an edn string
+* Keywords - `:id`, `:company/name`
+* Vectors - `[1,2]`, `'[1 2 3]'`
+* Maps - `'{:a 1, :b 2}'`
+* Sets - `'#{:a :b}'`
+* Lists - `'(1 2 3)'`
 
 == Glossary
 
