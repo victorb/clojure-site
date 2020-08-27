@@ -38,13 +38,13 @@ The internal steps of the Clojure tools, as well as the Clojure functions you in
 
 [source]
 ----
-clj     [clj-opt*] [execution-specifier]
-clojure [clj-opt*] [execution-specifier]
+clj     [clj-opt*] [execution-opt]
+clojure [clj-opt*] [execution-opt]
 ----
 
 == Start a REPL
 
-To run a REPL, invoke `clj` without any execution-specifier:
+To run a REPL, invoke `clj` without any execution-opt:
 
 [source]
 ----
@@ -53,72 +53,42 @@ Clojure 1.10.1
 user=>
 ----
 
-== Executing a function that takes a map
+== Executing a function
 
 _Available in clj 1.10.1.619 or higher, currently only in prerelease_
 
-You can use the following execution specifier to invoke a function that takes a map:
+Use the following execution-opt to invoke a function that takes a map:
 
 [source]
 ----
 clojure [clj-opt*] -X[:aliases] [a/fn] [kpath v]*
 ----
 
-The aliases are looked up in the deps.edn and combined into a composite arg map. The arg map is used both to influence how the classpath is built (more on that below) and to persist invocation details.
-
-You can specify the function to invoke either on the command line, or with the `:exec-fn` key in the arg map (command line takes precedence). The function is resolved in a namespace based on the following rules:
-
-* If function is unqualified, use the namespace in the `:ns-default` key in the arg map (if none, this is an error)
-* If function is qualified, and the qualifier is an alias in the arg map under `:ns-aliases`, use that namespace
-* Else use the fully qualified function symbol
-
-The function is invoked with a map. The base map can be supplied in the arg map under the `:exec-args` key and can also be overridden or supplied at the command line.
-
-For example, to invoke a function in your project:
-
-[source,clojure]
-----
-clj -X my.project.util/start-server :port 5555
-----
-
-This will invoke the function `(my.project.util/start-server {:port 5555})`. 
-
-If you have many utility functions in that namespace, you might want to set it up as a default in your `deps.edn`:
+`-X` is configured with an arg map with `:exec-fn` and `:exec-args` keys, and stored under an alias in `deps.edn`:
 
 [source,clojure]
 ----
 ;; deps.edn
 {:aliases
- {:my-project
-  {:ns-default my.project.util}}}
+ {:my-fn
+  {:exec-fn my.qualified/fn
+   :exec-args {:my {:data 123}
+              :config 456}}}}
 ----
 
-This simplifies the invocation and also lets you call any other utility function in that namespace:
+To invoke, pass the name of the alias to `-X`:
 
 [source]
 ----
-clj -X:my-project start-server :port 5555
-clj -X:my-project new-user :name '"Kermit"' :color :green
+clj -X:my-fn
 ----
 
-If you also have a set of database utility functions, supply a namespace alias for it:
-[source,clojure]
-----
-;; deps.edn
-{:aliases
- {:my-project
-  {:ns-default my.project.util
-   :ns-aliases {db my.project.dbutil}}}}
-   
-clj -X:my-project db/install-schema :schema '"db/my.schema"'
-----
-
-As you saw above, you can supply key-path/value pairs on the command line. The key-path is either a single key or a vector of keys to refer to a nested key (as with `assoc-in`). Each key-path will be used to `assoc-in` to the original `:args` map, overriding the value there.
+You can supply additional keys, or override values stored in the deps.edn file by passing pairs of key-path and value. The key-path should either be a single key or a vector of keys to refer to a nested key (as with `assoc-in`). Each key-path will be used to `assoc-in` to the original `:args` map, overriding the value there.
 
 [source]
 ----
 # Top key override
-clj -X:my-fn :val 789
+clj -X:my-fn :config 789
 
 # Nested key override
 clj -X:my-fn '[:my :data]' 789
@@ -129,9 +99,21 @@ clj -X:my-fn '[:my :data]' 789
 See the later section on "Quoting keys and values" for more details on how to properly quote edn values on the command line.
 ====
 
+If you want to execute an arbitrary function, you can pass it on the command instead, along with pairs of key-path and value:
+
+[source]
+----
+clj -X my.qualified/fn :config 789
+----
+
+[NOTE]
+====
+Alias arg maps can also include a default namespace or namespace aliases for resolving the function (see "Function execution" for more details).
+====
+
 == Running a main or script
 
-You can also use a `-M` specifier to invoke clojure.main, which supports calling a namespace with a `-main` function or running a Clojure script:
+You can use the `-M` execution-opt to invoke clojure.main, which supports calling a namespace with a `-main` function or a Clojure script:
 
 [source]
 ----
@@ -140,7 +122,7 @@ clojure [clj-opt*] -M[:aliases] [main-opts]
 
 The -M aliases are pulled from `deps.edn` and combined to form an arg map. The arg map can modify the classpath or supply main options.
 
-See the <<repl_and_main#,clojure.main>> documentation for more details on the main options.
+See the <<repl_and_main#,clojure.main>> documentation for more details on main options.
 
 = Operation
 
@@ -457,7 +439,64 @@ This map is stored in alias data and provided to the Clojure tools using -A (for
 
 == Execution
 
-Execution options were mostly covered in the earlier Overview section.
+=== Function execution
+
+You can specify the function to invoke either on the command line, or with the `:exec-fn` key in the arg map (command line takes precedence). The function is resolved in a namespace based on the following rules:
+
+* If function is unqualified, use the namespace in the `:ns-default` key in the arg map (if none, this is an error)
+* If function is qualified, and the qualifier is an alias in the arg map under `:ns-aliases`, use that namespace
+* Else use the fully qualified function symbol
+
+The function is invoked with a map. The base map can be supplied in the arg map under the `:exec-args` key and can also be overridden or supplied at the command line.
+
+For example, to invoke a function in your project:
+
+[source,clojure]
+----
+clj -X clojure.core.server/start-server :name '"repl"' :port 5555 :accept clojure.core.server/repl
+----
+
+This will invoke the function:
+
+[source,clojure]
+----
+(clojure.core.server/start-server {:name "repl" :port 5555 :accept clojure.core.server/repl})
+----
+
+You could also set this up as a default namespace in your `deps.edn`:
+
+[source,clojure]
+----
+;; deps.edn
+{:aliases
+ {:server
+  {:ns-default clojure.core.server}}}
+
+clj -X:server start-server :name '"repl"' :port 5555 :accept clojure.core.server/repl
+----
+
+Or you could just make an alias (along with others):
+
+[source,clojure]
+----
+;; deps.edn
+{:aliases
+ {:project
+  {:ns-aliases {server clojure.core.server}}}}
+
+clj -X:project server/start-server :name '"repl"' :port 5555 :accept clojure.core.server/repl
+----
+
+As you saw above, you can supply key-path/value pairs on the command line. The key-path is either a single key or a vector of keys to refer to a nested key (as with `assoc-in`). Each key-path will be used to `assoc-in` to the original `:args` map, overriding the value there.
+
+[source]
+----
+# Top key override
+clj -X:my-fn :val 789
+
+# Nested key override
+clj -X:my-fn '[:my :data]' 789
+----
 
 === Main execution
 
@@ -751,18 +790,23 @@ This section summarizes all of the available arg map keys that `clj` uses and th
 
 == Quoting keys and values
 
-Key/value pairs are read as edn strings. In general, it is always safe to surround the edn value with single quotes `'data'` which will be read as edn data. In some cases (particularly numbers and keywords), you can omit the single quotes as bash does not have any conflicting interpretation. Examples by data type:
+Keys and values on the command line are read as edn. The following data can be used without quoting:
 
 * Numbers - `123`, `12.4`
 * Booleans - `true`, `false`
 * Nil - `nil`
 * Symbols - `name`, `foo/bar`
-* Strings - `'"hi there"'` - note use of both single AND double quotes - single are for the shell, double make it an edn string
 * Keywords - `:id`, `:company/name`
-* Vectors - `[1,2]`, `'[1 2 3]'`
+
+These data types need to be surrounded by single quotes:
+
+* Strings - `'"hi there"'` - note use of both single AND double quotes - single are for the shell, double make it an edn string
+* Vectors - `'[1 2 3]'`
 * Maps - `'{:a 1, :b 2}'`
 * Sets - `'#{:a :b}'`
 * Lists - `'(1 2 3)'`
+
+Note that strings require both single quotes for the shell and double quotes to be properly read as edn!
 
 == Glossary
 
