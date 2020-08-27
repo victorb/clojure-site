@@ -73,7 +73,7 @@ clojure [clj-opt*] -X[:aliases] [a/fn] [kpath v]*
  {:my-fn
   {:exec-fn my.qualified/fn
    :exec-args {:my {:data 123}
-              :config 456}}}}
+               :config 456}}}}
 ----
 
 To invoke, pass the name of the alias to `-X`:
@@ -800,13 +800,11 @@ Keys and values on the command line are read as edn. The following data can be u
 
 These data types need to be surrounded by single quotes:
 
-* Strings - `'"hi there"'` - note use of both single AND double quotes - single are for the shell, double make it an edn string
+* Strings - `'"hi there"'` - note use of both single quotes for the shell and double quotes to be read as an edn string
 * Vectors - `'[1 2 3]'`
 * Maps - `'{:a 1, :b 2}'`
 * Sets - `'#{:a :b}'`
 * Lists - `'(1 2 3)'`
-
-Note that strings require both single quotes for the shell and double quotes to be properly read as edn!
 
 == Glossary
 
