@@ -188,7 +188,7 @@ JVM execution relies on computing the classpath for the execution. The classpath
 
 **Prepare JVM environment**
 
-JVM arguments may either be passed on the command line (with `-J`) or by using data stored in an alias under `:jvm-opts` and passed with `-O` or `-A`
+JVM arguments may either be passed on the command line (with `-J`) or by using data stored in an alias under `:jvm-opts` and passed with `-X` or `-A` or `-M`
 
 **Execute command**
 
