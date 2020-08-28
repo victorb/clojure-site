@@ -38,13 +38,13 @@ The internal steps of the Clojure tools, as well as the Clojure functions you in
 
 [source]
 ----
-clj     [clj-opt*] [execution-opt]
-clojure [clj-opt*] [execution-opt]
+clj     [clj-opt*] [exec-opt]
+clojure [clj-opt*] [exec-opt]
 ----
 
 == Start a REPL
 
-To run a REPL, invoke `clj` without any execution-opt:
+To run a REPL, invoke `clj` without any exec-opt:
 
 [source]
 ----
@@ -57,7 +57,7 @@ user=>
 
 _Available in clj 1.10.1.619 or higher, currently only in prerelease_
 
-Use the following execution-opt to invoke a function that takes a map:
+Use the following exec-opt to invoke a function that takes a map:
 
 [source]
 ----
@@ -108,12 +108,12 @@ clj -X my.qualified/fn :config 789
 
 [NOTE]
 ====
-Alias arg maps can also include a default namespace or namespace aliases for resolving the function (see "Function execution" for more details).
+Alias arg maps can also include a default namespace or namespace aliases for resolving the function (see "Namespace resolution" for more details).
 ====
 
 == Running a main or script
 
-You can use the `-M` execution-opt to invoke clojure.main, which supports calling a namespace with a `-main` function or a Clojure script:
+You can use the `-M` exec-opt to invoke clojure.main, which supports calling a namespace with a `-main` function or a Clojure script:
 
 [source]
 ----
@@ -439,65 +439,6 @@ This map is stored in alias data and provided to the Clojure tools using -A (for
 
 == Execution
 
-=== Function execution
-
-You can specify the function to invoke either on the command line, or with the `:exec-fn` key in the arg map (command line takes precedence). The function is resolved in a namespace based on the following rules:
-
-* If function is unqualified, use the namespace in the `:ns-default` key in the arg map (if none, this is an error)
-* If function is qualified, and the qualifier is an alias in the arg map under `:ns-aliases`, use that namespace
-* Else use the fully qualified function symbol
-
-The function is invoked with a map. The base map can be supplied in the arg map under the `:exec-args` key and can also be overridden or supplied at the command line.
-
-For example, to invoke a function in your project:
-
-[source,clojure]
-----
-clj -X clojure.core.server/start-server :name '"repl"' :port 5555 :accept clojure.core.server/repl
-----
-
-This will invoke the function:
-
-[source,clojure]
-----
-(clojure.core.server/start-server {:name "repl" :port 5555 :accept clojure.core.server/repl})
-----
-
-You could also set this up as a default namespace in your `deps.edn`:
-
-[source,clojure]
-----
-;; deps.edn
-{:aliases
- {:server
-  {:ns-default clojure.core.server}}}
-
-clj -X:server start-server :name '"repl"' :port 5555 :accept clojure.core.server/repl
-----
-
-Or you could just make an alias (along with others):
-
-[source,clojure]
-----
-;; deps.edn
-{:aliases
- {:project
-  {:ns-aliases {server clojure.core.server}}}}
-
-clj -X:project server/start-server :name '"repl"' :port 5555 :accept clojure.core.server/repl
-----
-
-As you saw above, you can supply key-path/value pairs on the command line. The key-path is either a single key or a vector of keys to refer to a nested key (as with `assoc-in`). Each key-path will be used to `assoc-in` to the original `:args` map, overriding the value there.
-
-[source]
-----
-# Top key override
-clj -X:my-fn :val 789
-
-# Nested key override
-clj -X:my-fn '[:my :data]' 789
-----
-
 === Main execution
 
 One additional option for main execution is a map with key `:main-opts`:
@@ -787,6 +728,27 @@ This section summarizes all of the available arg map keys that `clj` uses and th
 ** `:exec-args` - function args to pass to -X (can be overridden at command line)
 * main (-M only)
 ** `:main-opts` - vector of string args to pass to clojure.main
+
+== Namespace resolution
+
+Symbols in the exec-opts or argmaps (like `:exec-fn`) are resolved with the following rules:
+
+* If function is unqualified, use the namespace in the `:ns-default` key in the arg map (if none, this is an error)
+* If function is qualified, and the qualifier is an alias in the arg map under `:ns-aliases`, use that namespace
+* Else use the fully qualified function symbol
+
+== Keys and key paths
+
+With the -X exec-opt you can supply key-path/value pairs on the command line. The key-path is either a single key or a vector of keys to refer to a nested key (as with `assoc-in`). Each key-path will be used to `assoc-in` to the original `:args` map, overriding the value there.
+
+[source]
+----
+# Top key override
+clj -X:my-fn :val 789
+
+# Nested key override
+clj -X:my-fn '[:my :data]' 789
+----
 
 == Quoting keys and values
 
